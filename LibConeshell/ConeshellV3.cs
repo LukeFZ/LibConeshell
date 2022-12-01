@@ -57,12 +57,12 @@ public class ConeshellV3 : ConeshellV2
             result[mixed1 & 0xf] ^= (byte)mixed3;
         }
 
-        var hash = SHA1.Create();
+        var hash = MD5.Create();
         hash.TransformBlock(sharedSecret, 0, sharedSecret.Length, null, 0);
         hash.TransformBlock(result, 0, result.Length, null, 0);
         hash.TransformFinalBlock(_versionKey, 0, _versionKey.Length);
 
-        return hash.Hash![..16];
+        return hash.Hash!;
     }
 
     #endregion
