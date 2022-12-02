@@ -1,4 +1,5 @@
-﻿using Org.BouncyCastle.Crypto.Parameters;
+﻿using System.Buffers.Binary;
+using Org.BouncyCastle.Crypto.Parameters;
 using System.Security.Cryptography;
 using System.Numerics;
 
@@ -86,7 +87,7 @@ public class ConeshellV3 : ConeshellV2
         inputStream = new MemoryStream(processedData);
         inputReader = new BinaryReader(inputStream);
 
-        return DecryptVfsInternal(dbData, inputReader, true);
+        return DecryptVfsInternal(processedData, inputReader, true, 4);
     }
 
     private static byte[] PreprocessVfs(BinaryReader dbReader, int remainingLength)
@@ -94,16 +95,22 @@ public class ConeshellV3 : ConeshellV2
         const ulong transformConstant = 0x5851F42D4C957F2D;
         const int transformLength = 16;
 
-        var transformInputConstant1 = dbReader.ReadUInt64();
-        var transformInputConstant2 = dbReader.ReadUInt64();
-        var transformInputConstant3 = dbReader.ReadUInt64();
-        var transformInputConstant4 = dbReader.ReadUInt64();
+        ulong ReadBigEndianULong(BinaryReader reader)
+            => BinaryPrimitives.ReadUInt64BigEndian(reader.ReadBytes(8));
 
         unchecked
         {
-            var transformMixed1 = 2 * transformInputConstant4 | 1;
-            var transformMixed2 = transformMixed1 + transformConstant * (transformMixed1 + transformInputConstant3);
-            var transformMixed3 = 2 * transformInputConstant2 | 1;
+            var transformInputConstant1 = ReadBigEndianULong(dbReader);
+            var transformInputConstant2 = ReadBigEndianULong(dbReader);
+
+            dbReader.BaseStream.Position += 4; // gcmAdd1
+
+            var transformInputConstant3 = ReadBigEndianULong(dbReader);
+            var transformInputConstant4 = ReadBigEndianULong(dbReader);
+
+            var transformMixed1 = (2 * transformInputConstant4) | 1; 
+            var transformMixed2 = transformMixed1 + transformConstant * (transformMixed1 + transformInputConstant3); 
+            var transformMixed3 = (2 * transformInputConstant2) | 1; 
             var transformMixed4 = transformMixed3 + transformConstant * (transformMixed3 + transformInputConstant1);
 
             var transformArray = new byte[transformLength];
@@ -111,8 +118,8 @@ public class ConeshellV3 : ConeshellV2
             for (int i = 0; i < transformLength; i++)
             {
                 var transformCombined1 = transformMixed1 + transformConstant * transformMixed2;
-                var transformRotated1 = BitOperations.RotateLeft((transformMixed2 ^ (transformMixed2 >> 18)) >> 27, (int)(transformMixed2 >> 59));
-                var transformRotated2 = BitOperations.RotateLeft((transformMixed4 ^ (transformMixed4 >> 18)) >> 27, (int)(transformMixed4 >> 59));
+                var transformRotated1 = BitOperations.RotateRight((uint)((transformMixed2 ^ (transformMixed2 >> 18)) >> 27), (int)(transformMixed2 >> 59));
+                var transformRotated2 = BitOperations.RotateRight((uint)((transformMixed4 ^ (transformMixed4 >> 18)) >> 27), (int)(transformMixed4 >> 59));
                 transformArray[i] = (byte)(transformRotated1 ^ transformRotated2);
 
                 if (transformRotated2 != 0)
@@ -133,6 +140,8 @@ public class ConeshellV3 : ConeshellV2
                 else
                     transformMixed4 = transformCombined2;
             }
+
+            dbReader.BaseStream.Position = 4;
 
             var processedData = dbReader.ReadBytes(remainingLength);
 
@@ -157,7 +166,7 @@ public class ConeshellV3 : ConeshellV2
 
             var loopBase = input;
             var loopAdd = transformConstant;
-            var loopCondition = loopInput & 0xFFFFFFFF;
+            var loopCondition = (uint)loopInput;
 
             do
             {

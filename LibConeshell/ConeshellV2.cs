@@ -273,7 +273,7 @@ public class ConeshellV2 : Coneshell
         0x1C3AF78Eu
     };
 
-    public virtual byte[] DecryptVfs(byte[] dbData, bool skipVerification = false)
+    public virtual byte[] DecryptVfs(byte[] dbData, bool skipVerification = true)
     {
         var inputStream = new MemoryStream(dbData);
         var inputReader = new BinaryReader(inputStream);
@@ -284,9 +284,10 @@ public class ConeshellV2 : Coneshell
         return DecryptVfsInternal(dbData, inputReader, skipVerification);
     }
 
-    protected byte[] DecryptVfsInternal(byte[] dbData, BinaryReader inputReader, bool skipVerification)
+    protected byte[] DecryptVfsInternal(byte[] dbData, BinaryReader inputReader, bool skipVerification, int headerOffset = 0)
     {
-        const int headerSize = 0x4 + 0x10 + 0x10 + 0x4 + 0x10 + 0x100;
+        const int fullHeaderSize = 0x4 + 0x4 + 0x10 + 0x10 + 0x4 + 0x10 + 0x100;
+        var headerSize = fullHeaderSize - headerOffset;
 
         if (dbData.Length < headerSize)
             throw new InvalidDataException("Encrypted database too short.");
@@ -295,42 +296,46 @@ public class ConeshellV2 : Coneshell
         var gcmKey = inputReader.ReadBytes(0x10);
         var gcmIv = inputReader.ReadBytes(0x10);
         var gcmAdd2 = inputReader.ReadUInt32();
-
-        var gcmAdd = BitConverter.GetBytes(gcmAdd1).Concat(BitConverter.GetBytes(gcmAdd2)).ToArray();
-
         var gcmTag = inputReader.ReadBytes(0x10);
         var verifySig = inputReader.ReadBytes(0x100);
 
-        var rsaEncPublicKey = Encoding.UTF8.GetString(VfsDerivePublicKey()[..^1]);
-        using var rsaPublicKeyStringReader = new StringReader(rsaEncPublicKey);
-        var rsaPublicKeyPemReader = new PemReader(rsaPublicKeyStringReader);
-        if (rsaPublicKeyPemReader.ReadObject() is not RsaKeyParameters rsaPublicKey)
-            throw new InvalidDataException("Failed to parse derived VFS public key.");
+        var gcmAdd = BitConverter.GetBytes(gcmAdd1).Concat(BitConverter.GetBytes(gcmAdd2)).ToArray();
 
-        var signer = new RsaDigestSigner(new Sha1Digest());
-        signer.Init(false, rsaPublicKey);
-        signer.BlockUpdate(gcmTag, 0, gcmTag.Length);
-        var sigResult = signer.VerifySignature(verifySig);
+        if (!skipVerification)
+        {
+            var rsaEncPublicKey = Encoding.UTF8.GetString(VfsDerivePublicKey()[..^1]);
+            using var rsaPublicKeyStringReader = new StringReader(rsaEncPublicKey);
+            var rsaPublicKeyPemReader = new PemReader(rsaPublicKeyStringReader);
+            if (rsaPublicKeyPemReader.ReadObject() is not RsaKeyParameters rsaPublicKey)
+                throw new InvalidDataException("Failed to parse derived VFS public key.");
 
-        if (!sigResult && !skipVerification)
-            throw new InvalidDataException("Failed to verify VFS signature.");
+            var signer = new RsaDigestSigner(new Sha1Digest());
+            signer.Init(false, rsaPublicKey);
+            signer.BlockUpdate(gcmTag, 0, gcmTag.Length);
+            var sigResult = signer.VerifySignature(verifySig);
 
-        var encryptedData = new byte[dbData.Length - headerSize + gcmTag.Length];
-        if (inputReader.Read(encryptedData, 0, dbData.Length - headerSize) != dbData.Length - headerSize)
+            if (!sigResult)
+                throw new InvalidDataException("Failed to verify VFS signature.");
+        }
+
+        var encryptedLength = dbData.Length - headerSize;
+        var encryptedData = new byte[encryptedLength + gcmTag.Length];
+        if (inputReader.Read(encryptedData, 0, encryptedLength) != encryptedLength)
             throw new InvalidDataException("Failed to read encrypted data from database.");
+
+        Buffer.BlockCopy(gcmTag, 0, encryptedData, encryptedLength, gcmTag.Length);
 
         inputReader.Dispose();
 
         var gcm = new GcmBlockCipher(new AesEngine());
-        gcm.Init(false, new AeadParameters(new KeyParameter(gcmKey), gcmTag.Length * 8, gcmIv));
-        gcm.ProcessAadBytes(gcmAdd, 0, gcmAdd.Length);
+        gcm.Init(false, new AeadParameters(new KeyParameter(gcmKey), gcmTag.Length * 8, gcmIv, gcmAdd));
 
         var decryptedData = new byte[gcm.GetOutputSize(encryptedData.Length)];
 
         try
         {
-            gcm.ProcessBytes(encryptedData, 0, encryptedData.Length, decryptedData, 0);
-            gcm.DoFinal(decryptedData, decryptedData.Length); // This already verifies the tag for us
+            var decryptedLen = gcm.ProcessBytes(encryptedData, 0, encryptedData.Length, decryptedData, 0);
+            gcm.DoFinal(decryptedData, decryptedLen); // This already verifies the tag for us
         }
         catch (Exception ex)
         {
