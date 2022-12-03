@@ -9,13 +9,15 @@ public class ConeshellV3 : ConeshellV2
 {
     private readonly byte[] _versionKey;
 
-    public static ConeshellV3 FromTally(byte[] deviceUdid, byte[] tally)
+    public static ConeshellV3 FromTally(Guid deviceUdid, byte[] tally)
     {
         if (tally.Length != 524)
             throw new ArgumentException("The tally must be 524 bytes in length.", nameof(tally));
 
-        return new ConeshellV3(deviceUdid, tally[0x1f8..],
-            new X25519PublicKeyParameters(tally[0x1d8..0x1f8]));
+        return new ConeshellV3(
+            Convert.FromHexString(deviceUdid.ToString().Replace("-", "")),
+            tally[0x1f8..],
+            new X25519PublicKeyParameters(tally[0x1d8..0x1f8].Reverse().ToArray()));
     }
 
     public ConeshellV3(byte[] deviceUdid, byte[] versionKey, X25519PublicKeyParameters serverPublicKey)
