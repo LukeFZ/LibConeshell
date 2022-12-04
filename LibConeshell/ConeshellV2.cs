@@ -13,7 +13,7 @@ namespace LibConeshell;
 
 public class ConeshellV2 : Coneshell
 {
-    protected readonly byte[] DeviceUdid;
+    public byte[] DeviceUdid { protected get; set; }
     public X25519PublicKeyParameters? ServerPublicKey { get; set; }
 
     public ConeshellV2(byte[] deviceUdid, X25519PublicKeyParameters? serverPublicKey = null)
@@ -23,6 +23,11 @@ public class ConeshellV2 : Coneshell
 
         DeviceUdid = deviceUdid;
         ServerPublicKey = serverPublicKey;
+    }
+
+    public ConeshellV2()
+    {
+        DeviceUdid = new byte[16];
     }
 
     #region Coneshell Message Functions

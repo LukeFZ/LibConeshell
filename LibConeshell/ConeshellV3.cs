@@ -13,6 +13,7 @@ public class ConeshellV3 : ConeshellV2
 
 
     private readonly byte[] _versionKey;
+    private readonly byte[]? _vfsCert;
 
     public static ConeshellV3 FromTally(Guid deviceUdid, byte[] tally)
     {
@@ -22,7 +23,17 @@ public class ConeshellV3 : ConeshellV2
         return new ConeshellV3(
             Convert.FromHexString(deviceUdid.ToString().Replace("-", "")),
             tally[0x1f8..],
-            new X25519PublicKeyParameters(tally[0x1d8..0x1f8].Reverse().ToArray()));
+            new X25519PublicKeyParameters(tally[0x1d8..0x1f8].Reverse().ToArray()),
+            tally[..0x1d8]);
+    }
+
+    public ConeshellV3(byte[] deviceUdid, byte[] versionKey, X25519PublicKeyParameters serverPublicKey, byte[] vfsCert)
+        : this(deviceUdid, versionKey, serverPublicKey)
+    {
+        if (vfsCert.Length != VfsCertLength)
+            throw new ArgumentException($"The VFS certificate must be {VfsCertLength} bytes in length.", nameof(vfsCert));
+
+        _vfsCert = vfsCert;
     }
 
     public ConeshellV3(byte[] deviceUdid, byte[] versionKey, X25519PublicKeyParameters serverPublicKey)
@@ -38,6 +49,11 @@ public class ConeshellV3 : ConeshellV2
             throw new ArgumentException($"The version key must be {VersionKeyLength} bytes in length.", nameof(versionKey));
 
         _versionKey = versionKey;
+    }
+
+    public ConeshellV3()
+    {
+        _versionKey = new byte[20];
     }
 
     #region Coneshell Message Functions
