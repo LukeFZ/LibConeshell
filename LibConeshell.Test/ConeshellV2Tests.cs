@@ -21,7 +21,7 @@ public class ConeshellV2Tests
         var (actualMessage, secret) = coneshell.DecryptRequestMessage(encryptedMessage, serverPrivKey);
 
         CollectionAssert.AreEqual(expectedMesage, actualMessage,
-            "Server did not decrypt official client message properly.");
+            "Server did not decrypt official client request properly.");
     }
 
     [TestMethod]
@@ -38,7 +38,7 @@ public class ConeshellV2Tests
         var (actualMessage, secret) = coneshell.DecryptRequestMessage(encryptedMessage, serverPrivKey);
 
         CollectionAssert.AreEqual(expectedMesage, actualMessage,
-            "Server did not decrypt compressed official client message properly.");
+            "Server did not decrypt compressed official client request properly.");
     }
 
     [TestMethod]
@@ -79,7 +79,7 @@ public class ConeshellV2Tests
         var (serverDecrypted, serverSecret) = coneshell.DecryptRequestMessage(clientEncrypted, serverPrivKey);
 
         CollectionAssert.AreEqual(clientSecret, serverSecret, "Shared secret mismatch between client and server.");
-        CollectionAssert.AreEqual(testMessage, serverDecrypted, "Server did not decrypt client message properly.");
+        CollectionAssert.AreEqual(testMessage, serverDecrypted, "Server did not decrypt client request properly.");
     }
 
     [TestMethod]
@@ -94,7 +94,7 @@ public class ConeshellV2Tests
         var encrypted = coneshell.EncryptResponseMessage(testMessage, secret);
         var decrypted = coneshell.DecryptResponseMessage(encrypted, secret);
 
-        CollectionAssert.AreEqual(testMessage, decrypted, "Client did not decrypt server message properly.");
+        CollectionAssert.AreEqual(testMessage, decrypted, "Client did not decrypt server response properly.");
     }
 
     [TestMethod]
@@ -112,7 +112,7 @@ public class ConeshellV2Tests
         var (serverDecrypted, serverSecret) = coneshell.DecryptRequestMessage(clientEncrypted, serverPrivKey);
 
         CollectionAssert.AreEqual(clientSecret, serverSecret, "Shared secret mismatch between client and server.");
-        CollectionAssert.AreEqual(testMessage, serverDecrypted, "Server did not decrypt client message properly.");
+        CollectionAssert.AreEqual(testMessage, serverDecrypted, "Server did not decrypt compressed client request properly.");
     }
 
     [TestMethod]
@@ -127,6 +127,29 @@ public class ConeshellV2Tests
         var encrypted = coneshell.EncryptResponseMessage(testMessage, secret, true);
         var decrypted = coneshell.DecryptResponseMessage(encrypted, secret);
 
-        CollectionAssert.AreEqual(testMessage, decrypted, "Client did not decrypt server message properly.");
+        CollectionAssert.AreEqual(testMessage, decrypted, "Client did not decrypt compressed server response properly.");
+    }
+
+    [TestMethod]
+    public void ConeshellV2_Both_RoundtripMessageExchange()
+    {
+        var serverKeypair = Coneshell.GenerateKeyPair();
+        var serverPrivKey = (X25519PrivateKeyParameters)serverKeypair.Private;
+        var serverPubKey = (X25519PublicKeyParameters)serverKeypair.Public;
+
+        var testRequest = Encoding.UTF8.GetBytes("ClientTestRequest");
+        var testResponse = Encoding.UTF8.GetBytes("ServerTestResponse");
+
+        var deviceUdid = RandomNumberGenerator.GetBytes(16);
+        var coneshell = new ConeshellV2(deviceUdid, serverPubKey);
+
+        var (encryptedRequest, requestSecretClient) = coneshell.EncryptRequestMessage(testRequest);
+        var (decryptedRequest, requestSecretServer) = coneshell.DecryptRequestMessage(encryptedRequest, serverPrivKey);
+        var encryptedResponse = coneshell.EncryptResponseMessage(testResponse, requestSecretServer);
+        var decryptedResponse = coneshell.DecryptResponseMessage(encryptedResponse, requestSecretServer);
+
+        CollectionAssert.AreEqual(requestSecretClient, requestSecretServer, "Shared secret mismatch between client and server.");
+        CollectionAssert.AreEqual(testRequest, decryptedRequest, "Server did not decrypt client request properly.");
+        CollectionAssert.AreEqual(testResponse, decryptedResponse, "Client did not decrypt server response properly.");
     }
 }
