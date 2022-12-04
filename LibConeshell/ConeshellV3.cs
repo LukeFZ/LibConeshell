@@ -95,8 +95,14 @@ public class ConeshellV3 : ConeshellV2
 
     protected override uint VfsHeaderMagic => 0x03007ADA;
 
+    private static ulong ReadBigEndianULong(BinaryReader reader)
+        => BinaryPrimitives.ReadUInt64BigEndian(reader.ReadBytes(8));
+
     public override byte[] DecryptVfs(byte[] dbData, bool skipVerification = false /* TODO: Not implemented */)
     {
+        if (!skipVerification && _vfsCert == null)
+            throw new ArgumentException("You need to supply a VFS certificate for signature verification.", nameof(skipVerification));
+
         var inputStream = new MemoryStream(dbData);
         var inputReader = new BinaryReader(inputStream);
 
@@ -110,15 +116,33 @@ public class ConeshellV3 : ConeshellV2
         inputStream = new MemoryStream(processedData);
         inputReader = new BinaryReader(inputStream);
 
-        return DecryptVfsInternal(processedData, inputReader, true, 4);
+        var publicKey = "";
+        if (!skipVerification)
+        {
+            using var encCertStream = new MemoryStream(_vfsCert!);
+            using var encCertReader = new BinaryReader(encCertStream);
+            encCertReader.BaseStream.Position += 4;
+
+            var transformConstant1 = ReadBigEndianULong(encCertReader);
+            var transformConstant2 = ReadBigEndianULong(encCertReader);
+
+            var transformMixed1 = (2 * transformConstant2) | 1;
+            var transformMixed2 = transformMixed1 + TransformConstant * (transformMixed1 + transformConstant1);
+
+            var encCert = new uint[0x1c4 / 4];
+            for (int i = 0; i < 0x1c4 / 4; i++)
+                encCert[i] = encCertReader.ReadUInt32();
+
+            publicKey = DeriveVfsPublicKey(encCert, transformMixed2, transformMixed1);
+
+        }
+
+        return DecryptVfsInternal(processedData, inputReader, skipVerification, publicKey, 4);
     }
 
     private static byte[] PreprocessVfs(BinaryReader dbReader, int remainingLength)
     {
         const int transformLength = 16;
-
-        ulong ReadBigEndianULong(BinaryReader reader)
-            => BinaryPrimitives.ReadUInt64BigEndian(reader.ReadBytes(8));
 
         unchecked
         {

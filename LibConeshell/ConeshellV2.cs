@@ -279,7 +279,7 @@ public class ConeshellV2 : Coneshell
         0x1C3AF78Eu
     };
 
-    public virtual byte[] DecryptVfs(byte[] dbData, bool skipVerification = true)
+    public virtual byte[] DecryptVfs(byte[] dbData, bool skipVerification = false)
     {
         var inputStream = new MemoryStream(dbData);
         var inputReader = new BinaryReader(inputStream);
@@ -287,10 +287,10 @@ public class ConeshellV2 : Coneshell
         if (inputReader.ReadUInt32() != VfsHeaderMagic)
             throw new InvalidDataException("Invalid database header.");
 
-        return DecryptVfsInternal(dbData, inputReader, skipVerification);
+        return DecryptVfsInternal(dbData, inputReader, skipVerification, !skipVerification ? DeriveVfsPublicKey(VfsCertConstants) : "");
     }
 
-    protected byte[] DecryptVfsInternal(byte[] dbData, BinaryReader inputReader, bool skipVerification, int headerOffset = 0)
+    protected static byte[] DecryptVfsInternal(byte[] dbData, BinaryReader inputReader, bool skipVerification, string publicKey = "", int headerOffset = 0)
     {
         const int fullHeaderSize = 0x4 + 0x4 + 0x10 + 0x10 + 0x4 + 0x10 + 0x100;
         var headerSize = fullHeaderSize - headerOffset;
@@ -303,26 +303,9 @@ public class ConeshellV2 : Coneshell
         var gcmIv = inputReader.ReadBytes(0x10);
         var gcmAdd2 = inputReader.ReadUInt32();
         var gcmTag = inputReader.ReadBytes(0x10);
-        var verifySig = inputReader.ReadBytes(0x100);
+        var signature = inputReader.ReadBytes(0x100);
 
         var gcmAdd = BitConverter.GetBytes(gcmAdd1).Concat(BitConverter.GetBytes(gcmAdd2)).ToArray();
-
-        if (!skipVerification)
-        {
-            var rsaEncPublicKey = Encoding.UTF8.GetString(VfsDerivePublicKey()[..^1]);
-            using var rsaPublicKeyStringReader = new StringReader(rsaEncPublicKey);
-            var rsaPublicKeyPemReader = new PemReader(rsaPublicKeyStringReader);
-            if (rsaPublicKeyPemReader.ReadObject() is not RsaKeyParameters rsaPublicKey)
-                throw new InvalidDataException("Failed to parse derived VFS public key.");
-
-            var signer = new RsaDigestSigner(new Sha1Digest());
-            signer.Init(false, rsaPublicKey);
-            signer.BlockUpdate(gcmTag, 0, gcmTag.Length);
-            var sigResult = signer.VerifySignature(verifySig);
-
-            if (!sigResult)
-                throw new InvalidDataException("Failed to verify VFS signature.");
-        }
 
         var encryptedLength = dbData.Length - headerSize;
         var encryptedData = new byte[encryptedLength + gcmTag.Length];
@@ -332,6 +315,17 @@ public class ConeshellV2 : Coneshell
         Buffer.BlockCopy(gcmTag, 0, encryptedData, encryptedLength, gcmTag.Length);
 
         inputReader.Dispose();
+
+        if (!skipVerification)
+        {
+            var signedData = gcmTag.Concat(BitConverter.GetBytes(encryptedLength - 4)).ToArray();
+
+            var rsa = RSA.Create();
+            rsa.ImportFromPem(publicKey);
+            var sigResult = rsa.VerifyHash(signedData, signature, HashAlgorithmName.SHA1, RSASignaturePadding.Pkcs1);
+            if (!sigResult)
+                throw new InvalidDataException("Failed to verify VFS signature.");
+        }
 
         var gcm = new GcmBlockCipher(new AesEngine());
         gcm.Init(false, new AeadParameters(new KeyParameter(gcmKey), gcmTag.Length * 8, gcmIv, gcmAdd));
@@ -356,12 +350,9 @@ public class ConeshellV2 : Coneshell
             : bodyData;
     }
 
-    private byte[] VfsDerivePublicKey()
+    protected static string DeriveVfsPublicKey(uint[] encCert, ulong seed = 0x8BE53A46A921AF07, ulong add = 0x31D7038E3C2AB8B)
     {
-        const ulong roundConstant1 = 0x5851F42D4C957F2D;
-        const ulong roundConstant2 = 0x31D7038E3C2AB8B;
-
-        var round = 0x8BE53A46A921AF07;
+        var round = seed;
         var result = new byte[0x1c4];
         using var outputStream = new MemoryStream(result);
         using var outputWriter = new BinaryWriter(outputStream);
@@ -370,7 +361,7 @@ public class ConeshellV2 : Coneshell
         {
             for (int i = 0; i < 0x1c4 / 4; i++)
             {
-                var rk = VfsCertConstants[i];
+                var rk = encCert[i];
                 var rg = (round ^ (round >> 18)) >> 27;
                 var rv = BitOperations.RotateRight((uint)rg, (int)(round >> 59)) ^ rk;
                 outputWriter.Write(rv);
@@ -378,7 +369,7 @@ public class ConeshellV2 : Coneshell
             }
         }
 
-        return result;
+        return Encoding.UTF8.GetString(result[..^1]);
     }
 
     #endregion
