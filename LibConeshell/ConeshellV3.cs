@@ -63,7 +63,7 @@ public class ConeshellV3 : ConeshellV2
     protected override byte[] DeriveDeviceSecret(byte[] sharedSecret)
     {
         if (sharedSecret.Length != SharedSecretLength)
-            throw new InvalidDataException($"The shared secret must be {SharedSecretLength} bytes in length.");
+            throw new ArgumentException($"The shared secret must be {SharedSecretLength} bytes in length.", nameof(sharedSecret));
 
         var result = sharedSecret[..16];
 
@@ -107,7 +107,7 @@ public class ConeshellV3 : ConeshellV2
         var inputReader = new BinaryReader(inputStream);
 
         if (inputReader.ReadUInt32() != VfsHeaderMagic)
-            throw new InvalidDataException("Invalid database header.");
+            throw new IOException("Invalid database header.");
 
         var processedData = PreprocessVfs(inputReader, dbData.Length - 4);
         inputReader.Dispose();

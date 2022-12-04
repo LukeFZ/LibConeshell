@@ -64,7 +64,7 @@ public class ConeshellV2 : Coneshell
         X25519PrivateKeyParameters? clientPrivateKey = null, bool shouldCompress = false)
     {
         if (ServerPublicKey == null)
-            throw new InvalidDataException("No server public key provided");
+            throw new InvalidDataException("No server public key provided.");
 
         const int headerSize = 0x4 + 0x20 + 0x10;
 
@@ -186,7 +186,7 @@ public class ConeshellV2 : Coneshell
         using var inputReader = new BinaryReader(inputStream);
 
         if (inputReader.ReadUInt32() != HeaderMagic)
-            throw new InvalidDataException("Invalid message header.");
+            throw new IOException("Invalid message header.");
 
         var clientEncPubKey = inputReader.ReadBytes(0x20);
         var expectedChecksum = inputReader.ReadBytes(0x10);
@@ -215,7 +215,7 @@ public class ConeshellV2 : Coneshell
         using var inputReader = new BinaryReader(inputStream);
 
         if (inputReader.ReadUInt32() != HeaderMagic)
-            throw new InvalidDataException("Invalid message header.");
+            throw new IOException("Invalid message header.");
 
         var iv = inputReader.ReadBytes(16);
         var expectedChecksum = inputReader.ReadBytes(16);
@@ -244,7 +244,7 @@ public class ConeshellV2 : Coneshell
         var checksum = checksumHash.Hash!;
 
         if (!checksum.SequenceEqual(expectedChecksum))
-            throw new InvalidDataException("Body checksum mismatch.");
+            throw new CryptographicException("Body checksum mismatch.");
 
         var decompressedLength = body[0] | (body[1] << 8) | (body[2] << 16) | (body[3] << 24);
         var bodyData = body.Skip(4).ToArray();
@@ -285,7 +285,7 @@ public class ConeshellV2 : Coneshell
         var inputReader = new BinaryReader(inputStream);
 
         if (inputReader.ReadUInt32() != VfsHeaderMagic)
-            throw new InvalidDataException("Invalid database header.");
+            throw new IOException("Invalid database header.");
 
         return DecryptVfsInternal(dbData, inputReader, skipVerification, !skipVerification ? DeriveVfsPublicKey(VfsCertConstants) : "");
     }
@@ -296,7 +296,7 @@ public class ConeshellV2 : Coneshell
         var headerSize = fullHeaderSize - headerOffset;
 
         if (dbData.Length < headerSize)
-            throw new InvalidDataException("Encrypted database too short.");
+            throw new IOException("Encrypted database too short.");
 
         var gcmAdd1 = inputReader.ReadUInt32();
         var gcmKey = inputReader.ReadBytes(0x10);
@@ -310,7 +310,7 @@ public class ConeshellV2 : Coneshell
         var encryptedLength = dbData.Length - headerSize;
         var encryptedData = new byte[encryptedLength + gcmTag.Length];
         if (inputReader.Read(encryptedData, 0, encryptedLength) != encryptedLength)
-            throw new InvalidDataException("Failed to read encrypted data from database.");
+            throw new IOException("Failed to read encrypted data from database.");
 
         Buffer.BlockCopy(gcmTag, 0, encryptedData, encryptedLength, gcmTag.Length);
 
@@ -324,7 +324,7 @@ public class ConeshellV2 : Coneshell
             rsa.ImportFromPem(publicKey);
             var sigResult = rsa.VerifyHash(signedData, signature, HashAlgorithmName.SHA1, RSASignaturePadding.Pkcs1);
             if (!sigResult)
-                throw new InvalidDataException("Failed to verify VFS signature.");
+                throw new CryptographicException("Failed to verify VFS signature.");
         }
 
         var gcm = new GcmBlockCipher(new AesEngine());
@@ -339,7 +339,7 @@ public class ConeshellV2 : Coneshell
         }
         catch (Exception ex)
         {
-            throw new InvalidDataException($"Failed to decrypt database: {ex.Message}");
+            throw new CryptographicException($"Failed to decrypt database: {ex.Message}");
         }
 
         var decompressedLength = decryptedData[0] | (decryptedData[1] << 8) | (decryptedData[2] << 16) | (decryptedData[3] << 24);

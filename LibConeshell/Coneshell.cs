@@ -18,7 +18,7 @@ public abstract class Coneshell
 
         var keypair = keygen.GenerateKeyPair();
         if (keypair == null)
-            throw new InvalidDataException("Failed to generate x25519 keypair.");
+            throw new CryptographicException("Failed to generate X25519 keypair.");
 
         return keypair;
     }
@@ -26,7 +26,7 @@ public abstract class Coneshell
     protected static byte[] AesCtrCryptInternal(byte[] message, byte[] key, byte[] iv)
     {
         if (key.Length != 16)
-            throw new ArgumentException("The key must be 16 bytes in length", nameof(key));
+            throw new ArgumentException("The key must be 16 bytes in length.", nameof(key));
 
         if (iv.Length != 16)
             throw new ArgumentException("The IV must be 16 bytes in length.", nameof(iv));
