@@ -7,12 +7,17 @@ namespace LibConeshell;
 
 public class ConeshellV3 : ConeshellV2
 {
+    private const int VersionKeyLength = 20;
+    private const int VfsCertLength = 472;
+    private const int TallyLength = 524;
+
+
     private readonly byte[] _versionKey;
 
     public static ConeshellV3 FromTally(Guid deviceUdid, byte[] tally)
     {
-        if (tally.Length != 524)
-            throw new ArgumentException("The tally must be 524 bytes in length.", nameof(tally));
+        if (tally.Length != TallyLength)
+            throw new ArgumentException($"The tally must be {TallyLength} bytes in length.", nameof(tally));
 
         return new ConeshellV3(
             Convert.FromHexString(deviceUdid.ToString().Replace("-", "")),
@@ -29,8 +34,8 @@ public class ConeshellV3 : ConeshellV2
     public ConeshellV3(byte[] deviceUdid, byte[] versionKey)
         : base(deviceUdid)
     {
-        if (versionKey.Length != 20)
-            throw new ArgumentException("The version key must be 20 bytes in length.", nameof(versionKey));
+        if (versionKey.Length != VersionKeyLength)
+            throw new ArgumentException($"The version key must be {VersionKeyLength} bytes in length.", nameof(versionKey));
 
         _versionKey = versionKey;
     }
@@ -41,8 +46,8 @@ public class ConeshellV3 : ConeshellV2
 
     protected override byte[] DeriveDeviceSecret(byte[] sharedSecret)
     {
-        if (sharedSecret.Length != 32)
-            throw new InvalidDataException("The shared secret must be 32 bytes in length.");
+        if (sharedSecret.Length != SharedSecretLength)
+            throw new InvalidDataException($"The shared secret must be {SharedSecretLength} bytes in length.");
 
         var result = sharedSecret[..16];
 
@@ -94,7 +99,6 @@ public class ConeshellV3 : ConeshellV2
 
     private static byte[] PreprocessVfs(BinaryReader dbReader, int remainingLength)
     {
-        const ulong transformConstant = 0x5851F42D4C957F2D;
         const int transformLength = 16;
 
         ulong ReadBigEndianULong(BinaryReader reader)
@@ -111,15 +115,15 @@ public class ConeshellV3 : ConeshellV2
             var transformInputConstant4 = ReadBigEndianULong(dbReader);
 
             var transformMixed1 = (2 * transformInputConstant4) | 1; 
-            var transformMixed2 = transformMixed1 + transformConstant * (transformMixed1 + transformInputConstant3); 
+            var transformMixed2 = transformMixed1 + TransformConstant * (transformMixed1 + transformInputConstant3); 
             var transformMixed3 = (2 * transformInputConstant2) | 1; 
-            var transformMixed4 = transformMixed3 + transformConstant * (transformMixed3 + transformInputConstant1);
+            var transformMixed4 = transformMixed3 + TransformConstant * (transformMixed3 + transformInputConstant1);
 
             var transformArray = new byte[transformLength];
 
             for (int i = 0; i < transformLength; i++)
             {
-                var transformCombined1 = transformMixed1 + transformConstant * transformMixed2;
+                var transformCombined1 = transformMixed1 + TransformConstant * transformMixed2;
                 var transformRotated1 = BitOperations.RotateRight((uint)((transformMixed2 ^ (transformMixed2 >> 18)) >> 27), (int)(transformMixed2 >> 59));
                 var transformRotated2 = BitOperations.RotateRight((uint)((transformMixed4 ^ (transformMixed4 >> 18)) >> 27), (int)(transformMixed4 >> 59));
                 transformArray[i] = (byte)(transformRotated1 ^ transformRotated2);
@@ -132,7 +136,7 @@ public class ConeshellV3 : ConeshellV2
                 else
                     transformMixed2 = transformCombined1;
 
-                var transformCombined2 = transformMixed3 + transformConstant * transformMixed4;
+                var transformCombined2 = transformMixed3 + TransformConstant * transformMixed4;
 
                 if (transformRotated1 != 0)
                 {

@@ -8,6 +8,9 @@ namespace LibConeshell;
 
 public abstract class Coneshell
 {
+    protected const int SharedSecretLength = 32;
+    protected const int DeviceUdidLength = 16;
+
     public static AsymmetricCipherKeyPair GenerateKeyPair()
     {
         var keygen = new X25519KeyPairGenerator();

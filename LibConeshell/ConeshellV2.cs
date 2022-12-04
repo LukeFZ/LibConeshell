@@ -18,8 +18,8 @@ public class ConeshellV2 : Coneshell
 
     public ConeshellV2(byte[] deviceUdid, X25519PublicKeyParameters? serverPublicKey = null)
     {
-        if (deviceUdid.Length != 16)
-            throw new ArgumentException("The device uuid must be 16 bytes in length.", nameof(deviceUdid));
+        if (deviceUdid.Length != DeviceUdidLength)
+            throw new ArgumentException($"The device udid must be {DeviceUdidLength} bytes in length.", nameof(deviceUdid));
 
         DeviceUdid = deviceUdid;
         ServerPublicKey = serverPublicKey;
@@ -31,8 +31,8 @@ public class ConeshellV2 : Coneshell
 
     protected virtual byte[] DeriveDeviceSecret(byte[] sharedSecret)
     {
-        if (sharedSecret.Length != 32)
-            throw new ArgumentException("The shared secret must be 32 bytes in length.", nameof(sharedSecret));
+        if (sharedSecret.Length != SharedSecretLength)
+            throw new ArgumentException($"The shared secret must be {SharedSecretLength} bytes in length.", nameof(sharedSecret));
 
         var result = sharedSecret[..16];
 
@@ -253,6 +253,7 @@ public class ConeshellV2 : Coneshell
 
     #region Coneshell VFS Functions
 
+    protected const ulong TransformConstant = 0x5851F42D4C957F2D;
     protected virtual uint VfsHeaderMagic => 0x02007ADA;
 
     private static readonly uint[] VfsCertConstants = {
@@ -367,8 +368,8 @@ public class ConeshellV2 : Coneshell
                 var rk = VfsCertConstants[i];
                 var rg = (round ^ (round >> 18)) >> 27;
                 var rv = BitOperations.RotateRight((uint)rg, (int)(round >> 59)) ^ rk;
-                outputWriter.Write((uint)rv);
-                round = roundConstant1 * round + roundConstant2;
+                outputWriter.Write(rv);
+                round = TransformConstant * round + add;
             }
         }
 
