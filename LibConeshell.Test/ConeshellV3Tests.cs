@@ -1,6 +1,5 @@
 ﻿using Org.BouncyCastle.Crypto.Parameters;
 using System.Security.Cryptography;
-using System.Text;
 
 namespace LibConeshell.Test;
 
@@ -14,7 +13,7 @@ public class ConeshellV3Tests
         var serverPrivKey = (X25519PrivateKeyParameters)serverKeypair.Private;
         var serverPubKey = (X25519PublicKeyParameters)serverKeypair.Public;
 
-        var testMessage = Encoding.UTF8.GetBytes("ConeshellTestMessage");
+        var testMessage = "ConeshellTestMessage"u8.ToArray();
         var deviceUdid = RandomNumberGenerator.GetBytes(16);
         var versionKey = RandomNumberGenerator.GetBytes(20);
         var coneshell = new ConeshellV3(deviceUdid, versionKey, serverPubKey);
@@ -31,7 +30,7 @@ public class ConeshellV3Tests
     {
         var secret = RandomNumberGenerator.GetBytes(32);
 
-        var testMessage = Encoding.UTF8.GetBytes("ConeshellTestMessage");
+        var testMessage = "ConeshellTestMessage"u8.ToArray();
         var deviceUdid = RandomNumberGenerator.GetBytes(16);
         var versionKey = RandomNumberGenerator.GetBytes(20);
         var coneshell = new ConeshellV3(deviceUdid, versionKey);
@@ -49,7 +48,7 @@ public class ConeshellV3Tests
         var serverPrivKey = (X25519PrivateKeyParameters)serverKeypair.Private;
         var serverPubKey = (X25519PublicKeyParameters)serverKeypair.Public;
 
-        var testMessage = Encoding.UTF8.GetBytes("ConeshellTestMessage");
+        var testMessage = "ConeshellTestMessage"u8.ToArray();
         var deviceUdid = RandomNumberGenerator.GetBytes(16);
         var versionKey = RandomNumberGenerator.GetBytes(20);
         var coneshell = new ConeshellV3(deviceUdid, versionKey, serverPubKey);
@@ -67,7 +66,7 @@ public class ConeshellV3Tests
     {
         var secret = RandomNumberGenerator.GetBytes(32);
 
-        var testMessage = Encoding.UTF8.GetBytes("ConeshellTestMessage");
+        var testMessage = "ConeshellTestMessage"u8.ToArray();
         var deviceUdid = RandomNumberGenerator.GetBytes(16);
         var versionKey = RandomNumberGenerator.GetBytes(20);
         var coneshell = new ConeshellV3(deviceUdid, versionKey);
@@ -85,8 +84,8 @@ public class ConeshellV3Tests
         var serverPrivKey = (X25519PrivateKeyParameters)serverKeypair.Private;
         var serverPubKey = (X25519PublicKeyParameters)serverKeypair.Public;
 
-        var testRequest = Encoding.UTF8.GetBytes("ClientTestRequest");
-        var testResponse = Encoding.UTF8.GetBytes("ServerTestResponse");
+        var testRequest = "ClientTestRequest"u8.ToArray();
+        var testResponse = "ServerTestResponse"u8.ToArray();
 
         var deviceUdid = RandomNumberGenerator.GetBytes(16);
         var versionKey = RandomNumberGenerator.GetBytes(20);

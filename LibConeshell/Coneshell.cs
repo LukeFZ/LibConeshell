@@ -3,6 +3,8 @@ using Org.BouncyCastle.Crypto.Parameters;
 using Org.BouncyCastle.Crypto;
 using Org.BouncyCastle.Security;
 using System.Security.Cryptography;
+using Org.BouncyCastle.Crypto.Engines;
+using Org.BouncyCastle.Crypto.Modes;
 
 namespace LibConeshell;
 
@@ -23,57 +25,27 @@ public abstract class Coneshell
         return keypair;
     }
 
-    protected static byte[] AesCtrCryptInternal(byte[] message, byte[] key, byte[] iv)
+    protected static byte[] AesCtrCryptInternal(ReadOnlySpan<byte> message, ReadOnlySpan<byte> key, ReadOnlySpan<byte> iv)
     {
-        if (key.Length != 16)
+        if (key.Length != 16 && key.Length != 32)
             throw new ArgumentException("The key must be 16 bytes in length.", nameof(key));
 
         if (iv.Length != 16)
             throw new ArgumentException("The IV must be 16 bytes in length.", nameof(iv));
 
-        var aes = Aes.Create();
-        aes.KeySize = 128;
-        aes.Padding = PaddingMode.None;
-        aes.Mode = CipherMode.ECB;
+        var ctr = new BufferedBlockCipher(new SicBlockCipher(new AesEngine()));
+        var output = new byte[ctr.GetOutputSize(message.Length)];
 
-        var counter = (byte[])iv.Clone();
+        ctr.Init(true, new ParametersWithIV(new KeyParameter(key), iv));
+        ctr.DoFinal(message, output);
 
-        var xorMask = new Queue<byte>();
-        var transform = aes.CreateEncryptor(key, new byte[16]);
-
-        using var inputStream = new MemoryStream(message);
-        using var outputStream = new MemoryStream();
-
-        int byteRead;
-        while ((byteRead = inputStream.ReadByte()) != -1)
-        {
-            if (xorMask.Count == 0)
-            {
-                var ctrBlock = new byte[16];
-
-                transform.TransformBlock(counter, 0, counter.Length, ctrBlock, 0);
-
-                for (var j = counter.Length - 1; j >= 0; j--)
-                {
-                    if (++counter[j] != 0)
-                        break;
-                }
-
-                foreach (var ctrByte in ctrBlock)
-                    xorMask.Enqueue(ctrByte);
-            }
-
-            var ctrMask = xorMask.Dequeue();
-            outputStream.WriteByte((byte)((byte)byteRead ^ ctrMask));
-        }
-
-        return outputStream.ToArray();
+        return output;
     }
 
     protected static byte[] GenerateSharedSecret(X25519PublicKeyParameters pubKey, X25519PrivateKeyParameters privKey)
     {
         var secret = new byte[X25519PrivateKeyParameters.SecretSize];
-        privKey.GenerateSecret(pubKey, secret, 0);
+        privKey.GenerateSecret(pubKey, secret);
 
         return secret;
     }

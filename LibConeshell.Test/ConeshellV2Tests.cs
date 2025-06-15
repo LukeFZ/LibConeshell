@@ -1,5 +1,4 @@
 using System.Security.Cryptography;
-using System.Text;
 using Org.BouncyCastle.Crypto.Parameters;
 
 namespace LibConeshell.Test;
@@ -33,7 +32,7 @@ public class ConeshellV2Tests
         var encryptedMessage =
             Convert.FromHexString(
                 "c0de0002ba7441a419bc010c745c79362278860fc90306e49787b27dbb56fa62b921df061c113691b7e733adc380afecd8e78b9212a1ff05c07cebdc771d2962bdd1f597b04b82033266954660f9b4f44224533169");
-        var expectedMesage = Encoding.UTF8.GetBytes("aaaabbbbaaaaccccddddeeeeaaaa");
+        var expectedMesage = "aaaabbbbaaaaccccddddeeeeaaaa"u8.ToArray();
 
         var (actualMessage, secret) = coneshell.DecryptRequestMessage(encryptedMessage, serverPrivKey);
 
@@ -51,7 +50,7 @@ public class ConeshellV2Tests
             new X25519PublicKeyParameters(
                 Convert.FromHexString("d733a12a53e53153b1ffd8908d28e0e1be2f03b17d9d47deca8285070094d849"));
 
-        var coneshell = new ConeshellV2(MD5.HashData(Encoding.UTF8.GetBytes("fd1d8aa8adfa3a5b")), serverPublicKey);
+        var coneshell = new ConeshellV2(MD5.HashData("fd1d8aa8adfa3a5b"u8.ToArray()), serverPublicKey);
 
         var expectedEncryptedMessage =
             Convert.FromHexString(
@@ -71,7 +70,7 @@ public class ConeshellV2Tests
         var serverPrivKey = (X25519PrivateKeyParameters) serverKeypair.Private;
         var serverPubKey = (X25519PublicKeyParameters) serverKeypair.Public;
 
-        var testMessage = Encoding.UTF8.GetBytes("ConeshellTestMessage");
+        var testMessage = "ConeshellTestMessage"u8.ToArray();
         var deviceUdid = RandomNumberGenerator.GetBytes(16);
         var coneshell = new ConeshellV2(deviceUdid, serverPubKey);
 
@@ -87,7 +86,7 @@ public class ConeshellV2Tests
     {
         var secret = RandomNumberGenerator.GetBytes(32);
 
-        var testMessage = Encoding.UTF8.GetBytes("ConeshellTestMessage");
+        var testMessage = "ConeshellTestMessage"u8.ToArray();
         var deviceUdid = RandomNumberGenerator.GetBytes(16);
         var coneshell = new ConeshellV2(deviceUdid);
 
@@ -104,7 +103,7 @@ public class ConeshellV2Tests
         var serverPrivKey = (X25519PrivateKeyParameters)serverKeypair.Private;
         var serverPubKey = (X25519PublicKeyParameters)serverKeypair.Public;
 
-        var testMessage = Encoding.UTF8.GetBytes("ConeshellTestMessage");
+        var testMessage = "ConeshellTestMessage"u8.ToArray();
         var deviceUdid = RandomNumberGenerator.GetBytes(16);
         var coneshell = new ConeshellV2(deviceUdid, serverPubKey);
 
@@ -120,7 +119,7 @@ public class ConeshellV2Tests
     {
         var secret = RandomNumberGenerator.GetBytes(32);
 
-        var testMessage = Encoding.UTF8.GetBytes("ConeshellTestMessage");
+        var testMessage = "ConeshellTestMessage"u8.ToArray();
         var deviceUdid = RandomNumberGenerator.GetBytes(16);
         var coneshell = new ConeshellV2(deviceUdid);
 
@@ -137,8 +136,8 @@ public class ConeshellV2Tests
         var serverPrivKey = (X25519PrivateKeyParameters)serverKeypair.Private;
         var serverPubKey = (X25519PublicKeyParameters)serverKeypair.Public;
 
-        var testRequest = Encoding.UTF8.GetBytes("ClientTestRequest");
-        var testResponse = Encoding.UTF8.GetBytes("ServerTestResponse");
+        var testRequest = "ClientTestRequest"u8.ToArray();
+        var testResponse = "ServerTestResponse"u8.ToArray();
 
         var deviceUdid = RandomNumberGenerator.GetBytes(16);
         var coneshell = new ConeshellV2(deviceUdid, serverPubKey);

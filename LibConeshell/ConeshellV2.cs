@@ -1,13 +1,11 @@
-﻿using System.Numerics;
+﻿using System.Buffers.Binary;
+using System.Numerics;
 using System.Security.Cryptography;
 using System.Text;
-using LZ4;
-using Org.BouncyCastle.Crypto.Digests;
+using K4os.Compression.LZ4;
 using Org.BouncyCastle.Crypto.Engines;
 using Org.BouncyCastle.Crypto.Modes;
 using Org.BouncyCastle.Crypto.Parameters;
-using Org.BouncyCastle.Crypto.Signers;
-using Org.BouncyCastle.OpenSsl;
 
 namespace LibConeshell;
 
@@ -60,7 +58,7 @@ public class ConeshellV2 : Coneshell
         return hash.Hash!;
     }
 
-    public (byte[] encrypted, byte[] secret) EncryptRequestMessage(byte[] message,
+    public (byte[] Encrypted, byte[] Secret) EncryptRequestMessage(byte[] message,
         X25519PrivateKeyParameters? clientPrivateKey = null, bool shouldCompress = false)
     {
         if (ServerPublicKey == null)
@@ -68,7 +66,7 @@ public class ConeshellV2 : Coneshell
 
         const int headerSize = 0x4 + 0x20 + 0x10;
 
-        var encryptedBufferLength = headerSize + 0x4 + (shouldCompress ? LZ4Codec.MaximumOutputLength(message.Length) : message.Length);
+        var encryptedBufferLength = headerSize + 0x4 + (shouldCompress ? LZ4Codec.MaximumOutputSize(message.Length) : message.Length);
         var encryptedBuffer = new byte[encryptedBufferLength];
 
         using var encryptedStream = new MemoryStream(encryptedBuffer);
@@ -111,7 +109,7 @@ public class ConeshellV2 : Coneshell
     {
         const int headerSize = 0x4 + 0x10 + 0x10;
 
-        var encryptedBufferLength = headerSize + 0x4 + (shouldCompress ? LZ4Codec.MaximumOutputLength(message.Length) : message.Length);
+        var encryptedBufferLength = headerSize + 0x4 + (shouldCompress ? LZ4Codec.MaximumOutputSize(message.Length) : message.Length);
         var encryptedBuffer = new byte[encryptedBufferLength];
 
         using var encryptedStream = new MemoryStream(encryptedBuffer);
@@ -137,18 +135,18 @@ public class ConeshellV2 : Coneshell
 
         if (shouldCompress)
         {
-            var compressed = LZ4Codec.Encode(message, 0, message.Length);
-            body = new byte[compressed.Length + 4];
-            body[0] = (byte)message.Length;
-            body[1] = (byte) (message.Length >> 8);
-            body[2] = (byte) (message.Length >> 16);
-            body[3] = (byte) (message.Length >> 24);
-            Buffer.BlockCopy(compressed, 0, body, 4, compressed.Length);
+            var compressed = new byte[LZ4Codec.MaximumOutputSize(message.Length)];
+            var compressedLength = LZ4Codec.Encode(message, compressed);
+            var compressedData = compressed.AsSpan(0, compressedLength);
+
+            body = new byte[compressedData.Length + 4];
+            BinaryPrimitives.WriteInt32LittleEndian(body, compressedData.Length + 4);
+            compressedData.CopyTo(body.AsSpan(4));
         }
         else
         {
             body = new byte[message.Length + 4];
-            Buffer.BlockCopy(message, 0, body, 4, message.Length);
+            message.CopyTo(body.AsSpan(4));
         }
 
         var encryptedBody = AesCtrCryptInternal(body, key, iv);
@@ -178,7 +176,7 @@ public class ConeshellV2 : Coneshell
         return encrypted;
     }
 
-    public (byte[] message, byte[] secret) DecryptRequestMessage(byte[] encrypted, X25519PrivateKeyParameters serverPrivateKey)
+    public (byte[] Message, byte[] Secret) DecryptRequestMessage(byte[] encrypted, X25519PrivateKeyParameters serverPrivateKey)
     {
         const int headerSize = 0x4 + 0x20 + 0x10;
 
@@ -246,12 +244,18 @@ public class ConeshellV2 : Coneshell
         if (!checksum.SequenceEqual(expectedChecksum))
             throw new CryptographicException("Body checksum mismatch.");
 
-        var decompressedLength = body[0] | (body[1] << 8) | (body[2] << 16) | (body[3] << 24);
-        var bodyData = body.Skip(4).ToArray();
+        var decompressedLength = BinaryPrimitives.ReadInt32LittleEndian(body);
+        if (decompressedLength != 0)
+        {
+            var decompressed = new byte[decompressedLength];
+            var result = LZ4Codec.Decode(body.AsSpan(4), decompressed);
+            if (result == -1)
+                throw new InvalidDataException("Decompression failed.");
 
-        return decompressedLength != 0 
-            ? LZ4Codec.Decode(bodyData, 0, bodyData.Length, decompressedLength)
-            : bodyData;
+            return decompressed[..result];
+        }
+
+        return body[4..];
     }
 
     #endregion
@@ -261,7 +265,8 @@ public class ConeshellV2 : Coneshell
     protected const ulong TransformConstant = 0x5851F42D4C957F2D;
     protected virtual uint VfsHeaderMagic => 0x02007ADA;
 
-    private static readonly uint[] VfsCertConstants = {
+    private static readonly uint[] VfsCertConstants =
+    [
         0xA6D3137Cu, 0xAA02BB19u, 0xEF3635A3u, 0xA5582A32u, 0x542D973Eu, 0x815A36DFu, 0xCD785F45u, 0xAC83658Au,
         0x42BFAE14u, 0x08614929u, 0x86133A68u, 0x89D7C415u, 0xB8B303ACu, 0x6E7CEEB5u, 0x9DC7367Bu, 0x3579BB20u,
         0x061C9807u, 0x2C13FFCDu, 0xBE449765u, 0x6D9118F3u, 0x950CA8B2u, 0x99F8FC64u, 0x4D7F0584u, 0x0D67A7E6u,
@@ -277,7 +282,7 @@ public class ConeshellV2 : Coneshell
         0xF9DCEF6Fu, 0x99CB24BEu, 0xEBBE76B2u, 0x30B9953Bu, 0x07F95F8Cu, 0x75813038u, 0xB556CDF4u, 0x0C5F9555u,
         0xACAA0380u, 0x9A53A8B6u, 0xE85EE132u, 0xFEED78E4u, 0x15497261u, 0x36CA63E6u, 0x47ECDEA1u, 0x912D20C4u,
         0x1C3AF78Eu
-    };
+    ];
 
     public virtual byte[] DecryptVfs(byte[] dbData, bool skipVerification = false)
     {
@@ -342,12 +347,18 @@ public class ConeshellV2 : Coneshell
             throw new CryptographicException($"Failed to decrypt database: {ex.Message}");
         }
 
-        var decompressedLength = decryptedData[0] | (decryptedData[1] << 8) | (decryptedData[2] << 16) | (decryptedData[3] << 24);
-        var bodyData = decryptedData.Skip(4).ToArray();
+        var decompressedLength = BinaryPrimitives.ReadInt32LittleEndian(decryptedData);
+        if (decompressedLength != 0)
+        {
+            var decompressed = new byte[decompressedLength];
+            var result = LZ4Codec.Decode(decryptedData.AsSpan(4), decompressed);
+            if (result == -1)
+                throw new InvalidDataException("Decompression failed.");
 
-        return decompressedLength != 0
-            ? LZ4Codec.Decode(bodyData, 0, bodyData.Length, decompressedLength)
-            : bodyData;
+            return decompressed[..result];
+        }
+
+        return decryptedData[4..];
     }
 
     protected static string DeriveVfsPublicKey(uint[] encCert, ulong seed = 0x8BE53A46A921AF07, ulong add = 0x31D7038E3C2AB8B)
